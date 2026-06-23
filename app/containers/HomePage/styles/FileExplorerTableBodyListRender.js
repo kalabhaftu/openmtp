@@ -25,6 +25,13 @@ export const tableCellFileExplorerTableRowsRender = {
     minWidth: 100,
     paddingRight: 10,
   },
+  [`&.extensionCell`]: {
+    whiteSpace: `nowrap`,
+    overflow: `hidden`,
+    textOverflow: `ellipsis`,
+    width: `auto`,
+    minWidth: 100,
+  },
 };
 
 export const styles = (_) => {

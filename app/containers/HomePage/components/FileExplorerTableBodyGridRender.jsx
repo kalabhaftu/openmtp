@@ -81,6 +81,7 @@ class FileExplorerTableBodyGridRender extends PureComponent {
       onContextMenuClick,
       onTableClick,
       onTableDoubleClick,
+      onDragStart,
     } = this.props;
     const { RenderFileIcon, RenderFolderIcon } = this;
 
@@ -102,6 +103,12 @@ class FileExplorerTableBodyGridRender extends PureComponent {
         onDragStart={(event) => {
           if (!isSelected) {
             onTableClick(item.path, deviceType, event, true, true);
+          }
+
+          if (onDragStart) {
+            onDragStart(event, {
+              sourceDeviceType: deviceType,
+            });
           }
         }}
       >

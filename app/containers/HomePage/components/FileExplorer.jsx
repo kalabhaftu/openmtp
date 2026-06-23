@@ -12,6 +12,7 @@ import {
 } from '@fortawesome/free-brands-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { withStyles } from '@material-ui/core/styles';
+import fs from 'fs';
 import { ipcRenderer, shell } from 'electron';
 import lodashSortBy from 'lodash/sortBy';
 import { connect } from 'react-redux';
@@ -22,7 +23,7 @@ import { styles } from '../styles/FileExplorer';
 import {
   TextFieldEdit as TextFieldEditDialog,
   ProgressBar as ProgressBarDialog,
-  Confirm as ConfirmDialog,
+  PasteConflictDialog,
 } from '../../../components/DialogBox';
 import { withReducer } from '../../../store/reducers/withReducer';
 import reducers from '../reducers';
@@ -180,9 +181,15 @@ class FileExplorer extends Component {
 
     this.mainWindowRendererProcess = getMainWindowRendererProcess();
     this.filesDragGhostImg = this._createDragIcon();
+    this.lastClickedPath = {
+      local: null,
+      mtp: null,
+    };
 
     this.initialState = {
-      togglePasteConfirmDialog: false,
+      togglePasteConflictDialog: false,
+      pasteConflicts: [],
+      pasteQueue: [],
       toggleDialog: {
         rename: {
           errors: {
@@ -1383,12 +1390,6 @@ class FileExplorer extends Component {
     });
   };
 
-  _handleTogglePasteConfirmDialog = (status) => {
-    this.setState({
-      togglePasteConfirmDialog: status,
-    });
-  };
-
   _handleShowInEnclosingFolder = async ({ data, enabled, label }) => {
     checkIf(data, 'object');
     checkIf(enabled, 'boolean');
@@ -1705,9 +1706,9 @@ class FileExplorer extends Component {
     const {
       deviceType,
       currentBrowsePath,
-      storageId,
       fileTransferClipboard,
       actionCreateThrowError,
+      directoryLists,
     } = this.props;
 
     let { queue } = fileTransferClipboard;
@@ -1739,13 +1740,60 @@ class FileExplorer extends Component {
       return null;
     }
 
-    if (
-      await fileExplorerController.filesExist({
-        deviceType,
-        fileList: queue,
-        storageId,
-      })
-    ) {
+    // Advanced conflict check (SuperCopier style)
+    const destNodes = directoryLists[deviceType].nodes || [];
+    const sourceDeviceType = fileTransferClipboard.source;
+    const sourceNodes = directoryLists[sourceDeviceType].nodes || [];
+    const conflicts = [];
+
+    for (let i = 0; i < queue.length; i += 1) {
+      const destPath = queue[i];
+      const srcPath = fileTransferClipboard.queue[i];
+      const _baseName = baseName(srcPath);
+
+      // Check if this file exists in destination folder
+      const destNode = destNodes.find((n) => n.name === _baseName);
+
+      if (destNode) {
+        let srcSize = 0;
+        let srcIsFolder = false;
+        let srcDate = null;
+
+        if (sourceDeviceType === DEVICE_TYPE.local) {
+          try {
+            const stat = fs.statSync(srcPath);
+
+            srcSize = stat.size;
+            srcIsFolder = stat.isDirectory();
+            srcDate = stat.mtime;
+          } catch (e) {
+            log.error(e);
+          }
+        } else {
+          const srcNode = sourceNodes.find((n) => n.path === srcPath);
+
+          if (srcNode) {
+            srcSize = srcNode.size;
+            srcIsFolder = srcNode.isFolder;
+            srcDate = srcNode.dateAdded;
+          }
+        }
+
+        conflicts.push({
+          name: _baseName,
+          srcPath,
+          destPath,
+          srcSize,
+          destSize: destNode.size,
+          srcIsFolder,
+          destIsFolder: destNode.isFolder,
+          srcDate,
+          destDate: destNode.dateAdded,
+        });
+      }
+    }
+
+    if (conflicts.length > 0) {
       analyticsService.sendEvent(
         EVENT_TYPE[`${deviceTypeUpperCase}_PASTE_FILES_DIALOG_OPEN`],
         {
@@ -1753,12 +1801,106 @@ class FileExplorer extends Component {
         }
       );
 
-      this._handleTogglePasteConfirmDialog(true);
+      this.setState({
+        togglePasteConflictDialog: true,
+        pasteConflicts: conflicts,
+        pasteQueue: fileTransferClipboard.queue,
+      });
 
       return null;
     }
 
     this._handlePasteConfirm(true);
+  };
+
+  _handlePasteConflictResolve = (choice) => {
+    const {
+      deviceType,
+      hideHiddenFiles,
+      currentBrowsePath,
+      storageId,
+      actionCreatePaste,
+      fileTransferClipboard,
+      actionCreateThrowError,
+    } = this.props;
+
+    const { pasteConflicts, pasteQueue } = this.state;
+    const destinationFolder = currentBrowsePath[deviceType];
+
+    this.setState({
+      togglePasteConflictDialog: false,
+    });
+
+    let filteredQueue = [...pasteQueue];
+
+    if (choice === 'skip') {
+      // Skip all files that exist
+      filteredQueue = pasteQueue.filter(
+        (srcPath) => !pasteConflicts.some((c) => c.srcPath === srcPath)
+      );
+    } else if (choice === 'different') {
+      // Overwrite only if size or date is different
+      filteredQueue = pasteQueue.filter((srcPath) => {
+        const conflict = pasteConflicts.find((c) => c.srcPath === srcPath);
+
+        if (conflict) {
+          const isSizeSame = conflict.srcSize === conflict.destSize;
+          // Compare dates if available
+          const isDateSame =
+            conflict.srcDate &&
+            conflict.destDate &&
+            new Date(conflict.srcDate).getTime() ===
+              new Date(conflict.destDate).getTime();
+
+          if (isSizeSame && isDateSame && !conflict.srcIsFolder) {
+            return false; // Skip because they are identical
+          }
+        }
+
+        return true;
+      });
+    } else if (choice === 'resume') {
+      // Skip if same size (Resume behavior - re-copy incomplete/different size ones)
+      filteredQueue = pasteQueue.filter((srcPath) => {
+        const conflict = pasteConflicts.find((c) => c.srcPath === srcPath);
+
+        if (conflict) {
+          const isSizeSame = conflict.srcSize === conflict.destSize;
+
+          if (isSizeSame && !conflict.srcIsFolder) {
+            return false; // Skip because size is same (already fully copied)
+          }
+        }
+
+        return true;
+      });
+    }
+
+    if (filteredQueue.length === 0) {
+      // All files were skipped, nothing to copy
+      actionCreateThrowError({
+        message: `All conflicting files were skipped. No files to transfer.`,
+      });
+
+      return;
+    }
+
+    // Call paste with the filtered clipboard queue
+    actionCreatePaste(
+      {
+        destinationFolder,
+        storageId,
+        fileTransferClipboard: {
+          ...fileTransferClipboard,
+          queue: filteredQueue,
+        },
+      },
+      {
+        filePath: destinationFolder,
+        ignoreHidden: hideHiddenFiles[deviceType],
+      },
+      deviceType
+    );
   };
 
   _handlePasteConfirm = (confirm) => {
@@ -1842,41 +1984,71 @@ class FileExplorer extends Component {
     actionCreateSelectAllClick({ selected }, isChecked, deviceType);
   };
 
-  _handleTableClick = (
-    path,
-    deviceType,
-    event,
-    dontAppend = false,
-    shiftKeyAcceleratorEnable = false
-  ) => {
+  _handleTableClick = (path, deviceType, event, dontAppend = false) => {
     if (undefinedOrNull(path)) {
       return null;
     }
 
     const { directoryLists, actionCreateTableClick } = this.props;
-    const { selected } = directoryLists[deviceType].queue;
-    const selectedIndex = selected.indexOf(path);
-    let _dontAppend = dontAppend;
+    const { queue } = directoryLists[deviceType];
+    const { selected } = queue;
+
     let newSelected = [];
+    const isShiftPressed = event && event.shiftKey;
+    const isCmdOrCtrlPressed = event && (event.metaKey || event.ctrlKey);
 
-    if (shiftKeyAcceleratorEnable && this.keyedAcceleratorList.shift) {
-      _dontAppend = false;
-    }
+    if (
+      isShiftPressed &&
+      this.lastClickedPath &&
+      this.lastClickedPath[deviceType]
+    ) {
+      const sortedNodes = this.tableSort({
+        nodes: directoryLists[deviceType].nodes,
+        order: directoryLists[deviceType].order,
+        orderBy: directoryLists[deviceType].orderBy,
+      });
 
-    if (_dontAppend) {
-      newSelected = [path];
-    } else if (selectedIndex === -1) {
-      newSelected = newSelected.concat(selected, path);
-    } else if (selectedIndex === 0) {
-      newSelected = newSelected.concat(selected.slice(1));
-    } else if (selectedIndex === selected.length - 1) {
-      newSelected = newSelected.concat(selected.slice(0, -1));
-    } else if (selectedIndex > 0) {
-      newSelected = newSelected.concat(
-        selected.slice(0, selectedIndex),
-        selected.slice(selectedIndex + 1)
+      const lastIndex = sortedNodes.findIndex(
+        (n) => n.path === this.lastClickedPath[deviceType]
       );
+      const currentIndex = sortedNodes.findIndex((n) => n.path === path);
+
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const rangePaths = sortedNodes.slice(start, end + 1).map((n) => n.path);
+
+        if (isCmdOrCtrlPressed) {
+          newSelected = removeArrayDuplicates([...selected, ...rangePaths]);
+        } else {
+          newSelected = rangePaths;
+        }
+      } else {
+        newSelected = [path];
+      }
+    } else {
+      const selectedIndex = selected.indexOf(path);
+
+      if (isCmdOrCtrlPressed) {
+        if (selectedIndex === -1) {
+          newSelected = [...selected, path];
+        } else {
+          newSelected = selected.filter((p) => p !== path);
+        }
+      } else if (dontAppend) {
+        newSelected = [path];
+      } else if (selectedIndex === -1) {
+        newSelected = [path];
+      } else {
+        newSelected = [];
+      }
     }
+
+    if (!this.lastClickedPath) {
+      this.lastClickedPath = {};
+    }
+
+    this.lastClickedPath[deviceType] = path;
 
     actionCreateTableClick({ selected: newSelected }, deviceType);
   };
@@ -1999,7 +2171,7 @@ class FileExplorer extends Component {
       isStatusBarEnabled,
       fileTransferClipboard,
     } = this.props;
-    const { toggleDialog, togglePasteConfirmDialog, directoryGeneratedTime } =
+    const { toggleDialog, directoryGeneratedTime, togglePasteConflictDialog } =
       this.state;
     const { rename, newFolder } = toggleDialog;
     const togglePasteDialog =
@@ -2145,12 +2317,10 @@ class FileExplorer extends Component {
             </div>
           </div>
         </ProgressBarDialog>
-        <ConfirmDialog
-          fullWidthDialog
-          maxWidthDialog="xs"
-          bodyText="Replace and merge the existing items?"
-          trigger={togglePasteConfirmDialog}
-          onClickHandler={this._handlePasteConfirm}
+        <PasteConflictDialog
+          open={togglePasteConflictDialog}
+          onResolve={this._handlePasteConflictResolve}
+          onClose={() => this.setState({ togglePasteConflictDialog: false })}
         />
         <FileExplorerBodyRender
           deviceType={deviceType}

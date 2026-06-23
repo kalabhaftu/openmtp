@@ -69,8 +69,6 @@ class FileExplorerTableBodyRender extends PureComponent {
       onSelectAllClick,
       onRequestSort,
       onContextMenuClick,
-      onIsDraggable,
-      onDragStart,
     } = this.props;
     const { nodes, order, orderBy, queue } = directoryLists[deviceType];
     const { selected } = queue;
@@ -88,14 +86,7 @@ class FileExplorerTableBodyRender extends PureComponent {
           rowCount={nodes ? nodes.length : 0}
           hideColList={hideColList}
         />
-        <TableBody
-          draggable={onIsDraggable(deviceType)}
-          onDragStart={(event) => {
-            onDragStart(event, {
-              sourceDeviceType: deviceType,
-            });
-          }}
-        >
+        <TableBody>
           {emptyRows ? (
             <FileExplorerTableEmptyRowRender
               mtpDevice={mtpDevice}

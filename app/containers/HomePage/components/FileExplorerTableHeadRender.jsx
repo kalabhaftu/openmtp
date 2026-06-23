@@ -16,6 +16,12 @@ const rows = [
     label: 'Name',
   },
   {
+    id: 'extension',
+    numeric: false,
+    disablePadding: true,
+    label: 'Type',
+  },
+  {
     id: 'size',
     numeric: false,
     disablePadding: true,

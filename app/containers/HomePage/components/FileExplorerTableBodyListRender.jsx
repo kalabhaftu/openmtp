@@ -56,6 +56,7 @@ class FileExplorerTableBodyListRender extends PureComponent {
       onContextMenuClick,
       onTableClick,
       onTableDoubleClick,
+      onDragStart,
     } = this.props;
 
     const { RenderFileIcon, RenderFolderIcon } = this;
@@ -78,7 +79,13 @@ class FileExplorerTableBodyListRender extends PureComponent {
         })}
         onDragStart={(event) => {
           if (!isSelected) {
-            onTableClick(item.path, deviceType, event);
+            onTableClick(item.path, deviceType, event, true);
+          }
+
+          if (onDragStart) {
+            onDragStart(event, {
+              sourceDeviceType: deviceType,
+            });
           }
         }}
       >
@@ -125,6 +132,32 @@ class FileExplorerTableBodyListRender extends PureComponent {
             ) : (
               fileName.text
             )}
+          </TableCell>
+        )}
+        {hideColList.indexOf('extension') < 0 && (
+          <TableCell
+            padding="none"
+            onClick={(event) => onTableClick(item.path, deviceType, event)}
+            className={`${styles.tableCell} extensionCell`}
+            onContextMenu={(event) =>
+              onContextMenuClick(
+                event,
+                { ...item },
+                { ...tableData },
+                _eventTarget
+              )
+            }
+            onDoubleClick={(event) =>
+              onTableDoubleClick(item, deviceType, event)
+            }
+          >
+            {item.isFolder
+              ? 'Folder'
+              : `${
+                  item.extension
+                    ? item.extension.toUpperCase().substring(1)
+                    : 'FILE'
+                }`}
           </TableCell>
         )}
         {hideColList.indexOf('size') < 0 && (

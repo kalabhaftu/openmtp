@@ -2,6 +2,7 @@
  * Build config for electron renderer process
  */
 
+import fs from 'fs';
 import path from 'path';
 import webpack from 'webpack';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
@@ -12,6 +13,10 @@ import TerserPlugin from 'terser-webpack-plugin';
 import baseConfig from './config.base';
 import { PATHS } from '../app/constants/paths';
 import { pkginfo } from '../app/utils/pkginfo';
+
+const sentryPropertiesExists = fs.existsSync(
+  path.join(__dirname, '../sentry.properties')
+);
 
 export default merge(baseConfig, {
   devtool: 'source-map',
@@ -254,6 +259,7 @@ export default merge(baseConfig, {
       configFile: 'sentry.properties',
       rewrite: false,
       release: pkginfo.version,
+      dryRun: !sentryPropertiesExists && !process.env.SENTRY_AUTH_TOKEN,
     }),
   ],
 

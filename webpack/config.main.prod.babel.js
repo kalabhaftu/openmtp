@@ -2,6 +2,7 @@
  * Webpack config for production electron main process
  */
 
+import fs from 'fs';
 import path from 'path';
 import webpack from 'webpack';
 import merge from 'webpack-merge';
@@ -13,6 +14,10 @@ import { PATHS } from '../app/constants/paths';
 import { pkginfo } from '../app/utils/pkginfo';
 
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+
+const sentryPropertiesExists = fs.existsSync(
+  path.join(__dirname, '../sentry.properties')
+);
 
 export default merge(baseConfig, {
   devtool: 'source-map',
@@ -75,6 +80,7 @@ export default merge(baseConfig, {
       configFile: 'sentry.properties',
       rewrite: false,
       release: pkginfo.version,
+      dryRun: !sentryPropertiesExists && !process.env.SENTRY_AUTH_TOKEN,
     }),
   ],
 
