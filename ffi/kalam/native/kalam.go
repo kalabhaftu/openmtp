@@ -14,6 +14,12 @@ import (
 /*	#include "stdint.h"
 	typedef void (* on_cb_result_t)(char*);
 */
+/*
+#include <signal.h>
+static void ignore_signal(int sig) {
+    signal(sig, SIG_IGN);
+}
+*/
 import "C"
 
 var container deviceContainer
@@ -89,6 +95,14 @@ func FetchStorages() {
 	_sendFetchStorages(true)
 }
 
+func init() {
+	// Ignore all non-fatal signals before any exported function runs.
+	// When Go is embedded via cgo, the runtime installs signal handlers
+	// that can crash the app if they receive a signal on a non-Go thread.
+	C.ignore_signal(C.SIGURG)
+	C.ignore_signal(C.SIGPIPE)
+}
+
 func _sendFetchStorages(retry bool) {
 	storages, err := _fetchStorages()
 
@@ -102,12 +116,12 @@ func _sendFetchStorages(retry bool) {
 			}
 		}
 
-		send_to_js.SendError(onDonePtr, err)
+		send_to_js.SendError(err)
 
 		return
 	}
 
-	send_to_js.SendStorages(onDonePtr, storages)
+	send_to_js.SendStorages(storages)
 }
 
 //export MakeDirectory
