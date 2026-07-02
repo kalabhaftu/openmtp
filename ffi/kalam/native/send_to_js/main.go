@@ -1,17 +1,24 @@
 package send_to_js
 
 /*
-	#include "stdio.h"
 	#include "stdlib.h"
-	#include "stdbool.h"
 
-	typedef void (* on_cb_result_t)(char*);
-	void send_cb_result(on_cb_result_t* ptr, char* json) {
-		on_cb_result_t cb = (on_cb_result_t) ptr;
+	extern void macMTP_done_callback(char* json);
+	extern void macMTP_preprocess_callback(char* json);
+	extern void macMTP_progress_callback(char* json);
+	extern void macMTP_transfer_done_callback(char* json);
 
-		if(cb != 0 && cb != NULL){
-			cb(json);
-		}
+	void call_done(char* json) {
+		macMTP_done_callback(json);
+	}
+	void call_preprocess(char* json) {
+		macMTP_preprocess_callback(json);
+	}
+	void call_progress(char* json) {
+		macMTP_progress_callback(json);
+	}
+	void call_transfer_done(char* json) {
+		macMTP_transfer_done_callback(json);
 	}
 */
 import "C"
@@ -22,9 +29,8 @@ import (
 	"time"
 )
 
-type SendCbResult C.on_cb_result_t
 
-func SendError(onDonePtr *SendCbResult, err error) {
+func SendError(err error) {
 	errorType, errorMsg := processError(err)
 
 	o := ErrorResult{
@@ -35,11 +41,10 @@ func SendError(onDonePtr *SendCbResult, err error) {
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendInitialize(onDonePtr *SendCbResult, deviceInfo *mtp.DeviceInfo, usbDesc *mtp.UsbDeviceInfo) {
+func SendInitialize(deviceInfo *mtp.DeviceInfo, usbDesc *mtp.UsbDeviceInfo) {
 	o := InitializeResult{
 		Data: DeviceInfo{
 			MtpDeviceInfo: deviceInfo,
@@ -49,11 +54,10 @@ func SendInitialize(onDonePtr *SendCbResult, deviceInfo *mtp.DeviceInfo, usbDesc
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendDeviceInfo(onDonePtr *SendCbResult, deviceInfo *mtp.DeviceInfo, usbDesc *mtp.UsbDeviceInfo) {
+func SendDeviceInfo(deviceInfo *mtp.DeviceInfo, usbDesc *mtp.UsbDeviceInfo) {
 	o := DeviceInfoResult{
 		Data: DeviceInfo{
 			MtpDeviceInfo: deviceInfo,
@@ -63,33 +67,30 @@ func SendDeviceInfo(onDonePtr *SendCbResult, deviceInfo *mtp.DeviceInfo, usbDesc
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendStorages(onDonePtr *SendCbResult, storages []mtpx.StorageData) {
+func SendStorages(storages []mtpx.StorageData) {
 	o := StoragesResult{
 		Data: storages,
 	}
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendMakeDirectory(onDonePtr *SendCbResult) {
+func SendMakeDirectory() {
 	o := MakeDirectoryResult{
 		Data: true,
 	}
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendFileExists(onDonePtr *SendCbResult, fc []mtpx.FileExistsContainer, inputFiles []string) {
+func SendFileExists(fc []mtpx.FileExistsContainer, inputFiles []string) {
 	var fdSlice []FileExistsData
 	for i, f := range fc {
 		fd := FileExistsData{
@@ -106,33 +107,30 @@ func SendFileExists(onDonePtr *SendCbResult, fc []mtpx.FileExistsContainer, inpu
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendDeleteFile(onDonePtr *SendCbResult) {
+func SendDeleteFile() {
 	o := DeleteFileResult{
 		Data: true,
 	}
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendRenameFile(onDonePtr *SendCbResult) {
+func SendRenameFile() {
 	o := RenameFileResult{
 		Data: true,
 	}
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendWalk(onDonePtr *SendCbResult, files []*mtpx.FileInfo) {
+func SendWalk(files []*mtpx.FileInfo) {
 	var outputFiles []FileInfo
 
 	for _, f := range files {
@@ -157,11 +155,10 @@ func SendWalk(onDonePtr *SendCbResult, files []*mtpx.FileInfo) {
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
 
-func SendUploadFilesPreprocess(onDonePtr *SendCbResult, fi *os.FileInfo, fullPath string) {
+func SendUploadFilesPreprocess(fi *os.FileInfo, fullPath string) {
 	o := UploadFilesPreprocessResult{
 		Data: TransferPreprocessData{
 			FullPath: fullPath,
@@ -172,11 +169,10 @@ func SendUploadFilesPreprocess(onDonePtr *SendCbResult, fi *os.FileInfo, fullPat
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_preprocess(C.CString(json))
 }
 
-func SendDownloadFilesPreprocess(onDonePtr *SendCbResult, fi *mtpx.FileInfo) {
+func SendDownloadFilesPreprocess(fi *mtpx.FileInfo) {
 	o := DownloadFilesPreprocessResult{
 		Data: TransferPreprocessData{
 			FullPath: fi.FullPath,
@@ -187,11 +183,10 @@ func SendDownloadFilesPreprocess(onDonePtr *SendCbResult, fi *mtpx.FileInfo) {
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_preprocess(C.CString(json))
 }
 
-func SendTransferFilesProgress(onDonePtr *SendCbResult, p *mtpx.ProgressInfo) {
+func SendTransferFilesProgress(p *mtpx.ProgressInfo) {
 	o := UploadFilesProgressResult{
 		Data: TransferProgressInfo{
 			FullPath:          p.FileInfo.FullPath,
@@ -218,28 +213,25 @@ func SendTransferFilesProgress(onDonePtr *SendCbResult, p *mtpx.ProgressInfo) {
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_progress(C.CString(json))
 }
 
-func SendTransferFilesDone(onDonePtr *SendCbResult) {
+func SendTransferFilesDone() {
 	o := UploadFilesDoneResult{
 		Data: true,
 	}
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_transfer_done(C.CString(json))
 }
 
-func SendDispose(onDonePtr *SendCbResult) {
+func SendDispose() {
 	o := DisposeResult{
 		Data: true,
 	}
 
 	json := toJson(o)
 
-	convertedDoneCbPtr := (*C.on_cb_result_t)(onDonePtr)
-	C.send_cb_result(convertedDoneCbPtr, C.CString(json))
+	C.call_done(C.CString(json))
 }
